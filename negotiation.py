@@ -1,23 +1,17 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import uvicorn
-
-# Your original code starts here
-
 from dotenv import load_dotenv
 import os
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
-from langchain_core.messages import HumanMessage
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.document_loaders.csv_loader import CSVLoader
-import uuid
-
+import pandas as pd
+from tabulate import tabulate
 
 load_dotenv()
 
+# Product Extractor Class
 class ProductExtractor:
     def __init__(self):
         self.llm = ChatGroq(temperature=0, groq_api_key=os.getenv("GROQ_API_KEY"), model_name="llama-3.1-70b-versatile")
@@ -25,36 +19,46 @@ class ProductExtractor:
         self.loader = CSVLoader(file_path=self.file_path)
         self.data = self.loader.load()
         self.prompt = PromptTemplate.from_template(
-            """ from the {data} and the {query} identify the product asked by user in query and give the only name,original price, selling price, description from only data other than this nothing required no special chartacers in output  """
+            """ from the {data} and the {query} identify the product asked by user in query and give the only name,original price, selling price, description from only data other than this nothing required no special characters in output  """
         )
 
     def get_product_details(self, query):
         res = self.llm.invoke(self.prompt.format(data=str(self.data), query=str(query)))
 
         product_details = str(res.content)
+        print(product_details)
         product_dict = {}
         lines = product_details.split('\n')
         for line in lines:
-          if ': ' in line:
-            key, value = line.split(': ', 1)
-            product_dict[key] = value
+            if ': ' in line:
+                key, value = line.split(': ', 1)
+                product_dict[key] = value
         return product_dict
-    
 
+
+
+# NegotiationBot Class
 class NegotiationBot:
     def __init__(self, session_id):
-        self.llm = ChatGroq(temperature=0, groq_api_key=os.getenv("GROQ_API_KEY"), model_name="llama-3.1-70b-versatile")
+        self.llm = ChatGroq(temperature=0, groq_api_key=os.getenv("GROQ_API_KEY"), model_name="llama-3.1-8b-instant")
         self.prompt_extract = ChatPromptTemplate.from_messages(
             [
                 ("system", """
-                                                            
-            ### JOB DESCRIPTION: Give a response in two lines.
-            You are a negotiation bot responsible for negotiating product prices with customers. You are provided with the following product information: {product}.
-        
-            if user accept or yes or confirm to buy then greet them saying thankyou for buying 
-            if user decline or not willing or no to price then greet them saying visit us again
-            give response in two lines
-            """),
+    You are a negotiation bot responsible for negotiating product prices with customers. Your goal is to reach a mutually beneficial agreement on the price of the product.
+
+    Product Information: {product}
+    from the product remember orginal and selling price 
+
+    
+    - If the customer accepts the price, confirm the purchase and express excitement.
+    - If the customer declines, thank them for considering the product and express hope for future interaction.
+    
+    response must me two or three line proper english sentence 
+    
+             
+    give responce in two line 
+    
+"""),
                 ("human", "{input_messages}"),
             ]
         )
@@ -88,41 +92,11 @@ class NegotiationBot:
 
         return output.content
 
-# Your original code ends here
+# DisplayItems Class
+class DisplayItems:
+    def __init__(self) -> None:
+        df = pd.read_csv('ecom_items.csv')
+        self.random_items = df[['Item', 'Selling_Price']].sample(n=15)
 
-# Define FastAPI app
-app = FastAPI()
-
-# Input schema for API requests
-class UserInput(BaseModel):
-    query: str
-    message: str
-
-# Initialize session and objects
-session_id = str(uuid.uuid4())
-extractor = ProductExtractor()
-negotiator = NegotiationBot(session_id)
-product_dict = None
-
-# FastAPI endpoint
-@app.post("/negotiate")
-def negotiate(input_data: UserInput):
-    global product_dict  # Keep the product details stored in memory for the session
-
-    # Extract product details if not already extracted
-    if not product_dict:
-        try:
-            product_dict = extractor.get_product_details(input_data.query)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    # Handle negotiation
-    try:
-        output = negotiator.negotiate(product_dict, input_data.message)
-        return {"response": output}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Run FastAPI server
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    def get_table(self):
+        return tabulate(self.random_items, headers='keys', tablefmt='grid', showindex=False)
