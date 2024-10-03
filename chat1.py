@@ -1,3 +1,10 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import uvicorn
+import uuid
+
+# Your original code starts here
+
 from dotenv import load_dotenv
 import os
 from langchain_groq import ChatGroq
@@ -7,7 +14,6 @@ from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.document_loaders.csv_loader import CSVLoader
-import uuid
 
 
 load_dotenv()
@@ -23,7 +29,6 @@ class ProductExtractor:
         )
 
     def get_product_details(self, query):
-        # res = self.llm.invoke({'input': self.prompt.format(data=str(self.data), query=str(query))})
         res = self.llm.invoke(self.prompt.format(data=str(self.data), query=str(query)))
 
         product_details = str(res.content)
@@ -50,11 +55,7 @@ class NegotiationBot:
             if user accept or yes or confirm to buy then greet them saying thankyou for buying 
             if user  decline or not willing or no to price then greet them saying visit us again
             give response in two lines
-            
-            
-
-            
-                        """),
+            """),
                 ("human", "{input_messages}"),
             ]
         )
@@ -70,46 +71,58 @@ class NegotiationBot:
 
     def negotiate(self, product_dict, input_messages):
         chain = self.prompt_extract | self.llm
-        # conversation = RunnableWithMessageHistory(
-        #     chain, 
-        #     self.get_session_history
-           
-        # )
         conversation = RunnableWithMessageHistory(
-        runnable=chain,  # Chain needs to be passed as a 'runnable'
-        get_session_history=self.get_session_history,  # This is passed as a keyword argument
-        input_messages_key="input_messages",  # Define the key for input messages
-        output_messages_key="output",  # Define the key for output messages
-        history_messages_key="history"  # Define the key for history if needed
-    )
+            runnable=chain,
+            get_session_history=self.get_session_history,
+            input_messages_key="input_messages",
+            output_messages_key="output",
+            history_messages_key="history"
+        )
         
         output = conversation.invoke(
-    input={
-        'input_messages': input_messages,
-
-        'product' : list(product_dict.items())
-    },
-    config=self.config
-)
+            input={
+                'input_messages': input_messages,
+                'product': list(product_dict.items())
+            },
+            config=self.config
+        )
 
         return output.content
 
+# Your original code ends here
 
-# Main loop
+# Define FastAPI app
+app = FastAPI()
+
+# Input schema for API requests
+class UserInput(BaseModel):
+    input_message: str
+
+# Initialize session and objects
 session_id = str(uuid.uuid4())
-product_dict = None
 extractor = ProductExtractor()
 negotiator = NegotiationBot(session_id)
+product_dict = None
 
-while True:
-   
-    input_messages = input('user: ')
-    if input_messages == 'quit':
-        break
+# FastAPI endpoint that takes one input parameter 'input_message'
+@app.post("/negotiate")
+def negotiate(input_data: UserInput):
+    global product_dict  # Keep the product details stored in memory for the session
+
+    # Extract product details if not already extracted
     if not product_dict:
-        query = input_messages
-        product_dict = extractor.get_product_details(query)
-        print(product_dict)
-    
-    output = negotiator.negotiate(product_dict, input_messages)
-    print(output)
+        try:
+            product_dict = extractor.get_product_details(input_data.input_message)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # Handle negotiation
+    try:
+        output = negotiator.negotiate(product_dict, input_data.input_message)
+        return {"response": output}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Run FastAPI server
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
