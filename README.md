@@ -24,4 +24,10 @@ Welcome to the **Negotiation Chatbot API**! This bot helps customers negotiate p
 - **LangChain**, **Groq API**, and **Pandas** libraries installed
   ```bash
   pip install fastapi uvicorn langchain pandas python-dotenv tabulate
-![flow_chart-removebg-preview](https://github.com/user-attachments/assets/381c1c18-4eaf-4cc7-8998-67d9e44d9ba8)
+
+![flow_chart](https://github.com/user-attachments/assets/51a4856d-09e5-4fad-a32e-d707b54e1c74)
+
+
+
+  
+
